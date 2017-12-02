@@ -14,7 +14,7 @@
 #define TriacOFF PTRIAC &=~(1<<PINTRIAC)
 
 #define F_CPU 8000000UL
-#define NO_DELAY 1
+//#define NO_DELAY 1
 
 
 #include <avr/io.h>
@@ -243,7 +243,7 @@ int main(void)
 	SSegmentOn();
 	PSEG0 |= (1<<PINSEG0);
 	PSEG1 |= (1<<PINSEG1);
-	//_delay_ms(150);
+	_delay_ms(150);
 	PSEG0 &= ~(1<<PINSEG0);
 	PSEG1 &= ~(1<<PINSEG1);
 	SSegmentOFF();
@@ -257,7 +257,7 @@ int main(void)
 
 	
 	//разрешаем прерывания
-	//sei();
+	sei();
 
 	EncoderFlag=0;
 	ButtonFlag=0;
@@ -278,7 +278,7 @@ int main(void)
 		if (ButtonFlag)
 		{
 			ButtonFlag = 0;
-			//_delay_ms(20);
+			_delay_ms(20);
 			if (GET_PORT_DATA(D,3) == 0)
 			//все еще нажата - не дребезг
 			{
@@ -344,7 +344,7 @@ int main(void)
 		{
 			//снимаем флаг
 			EncoderFlag=0;
-			//_delay_ms(20);
+			_delay_ms(20);
 			//поднимаем флаг обновления индикатора
 			SSegmentFlag=1;
 			//определяем нажата ли кнопка энкодера
