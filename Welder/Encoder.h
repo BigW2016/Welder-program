@@ -7,28 +7,24 @@
  * created from EncPoll by Dx http://easyelectronics.ru/repository.php?act=view&id=13
  */ 
 
-#include <avr/pgmspace.h>
+#include <inttypes.h>
 
-#define __GET_ENCODER_PORT_DATA(PORT_LETTER, PORT_PIN) (((PIN ## PORT_LETTER)&(1<<(P ## PORT_LETTER ## PORT_PIN)))>>(P ## PORT_LETTER ## PORT_PIN))
-#define GET_ENCODER_PORT_DATA(PORT_LETTER, PORT_PIN) __GET_ENCODER_PORT_DATA(PORT_LETTER, PORT_PIN)
-
-
-//порт пина A
-#define ENCPOLL_A_PORT B
-
-//порт пина B
-#define ENCPOLL_B_PORT B
-
-//пин A
-#define ENCPOLL_A_PIN 3
-
-//пин B
-#define ENCPOLL_B_PIN 2 
+//порт A
+#define ENCPOLL_A_PORT C
+#define ENCPOLL_A_PIN 2
+//порт B
+#define ENCPOLL_B_PORT C
+#define ENCPOLL_B_PIN 1 
+//порт кнопки энкодера
+#define ENCPOLL_BUTT_PORT C
+#define ENCPOLL_BUTT_PIN 3
 
 
 
+void EncoderInit(void);		//Настойка регистров энкодера
+int8_t GetEncoder(uint8_t*);		//Возвращает положение энкодера на основе предыдущего состояния
+uint8_t GetEncoderPortData(void); //получение текущего состояния регистров энкодера
+uint8_t GetEncoderButt(void);		//Возвращает состояние порта кнопки энкодера
 
-const	int8_t	EncState[] PROGMEM =
-{
-	0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0
-};
+
+

@@ -6,7 +6,7 @@
  *
  */ 
 
-#define __SET_DDR(PORT_LETTER, PORT_PIN) ((DDR ## PORT_LETTER)&(1<<(P ## PORT_LETTER ## PORT_PIN)))
+#define __SET_DDR(PORT_LETTER, PORT_PIN) ((DDR ## PORT_LETTER)|=(1<<(P ## PORT_LETTER ## PORT_PIN)))
 #define SET_DDR(PORT_LETTER, PORT_PIN) __SET_DDR(PORT_LETTER, PORT_PIN)
 
 #define __SET_PORT(PORT_LETTER) (PORT ## PORT_LETTER)
@@ -77,7 +77,7 @@
  
  void SSegmentOn(void)
  {
-	SSMix(1);
+	SSMix(0XFF);
  }
  
  void SSegmentOFF(void)

@@ -6,6 +6,8 @@
  *
  */ 
 
+#include <inttypes.h>
+
 #define SS_DP	0 	//define MCU pin connected to DP segment
 #define SS_A	5 	//define MCU pin connected to A segment
 #define SS_B	6 	//define MCU pin connected to B segment
@@ -26,7 +28,7 @@
 #define SPORTG	B		//G segment assignment
 
 
-void SSegmentInit(void);		//Out number or "--"
+void SSegmentInit(void);		//Настойка регистров управления индикатором
 void SSegmentOut(uint8_t);		//Out number or "--"
 void SSegmentOn(void);		//LED ON
 void SSegmentOFF(void);		//LED OFF

@@ -6,15 +6,6 @@
  */ 
 
 //макросы для автоматического определения параметров
-#define __GET_DDR(DDR_LETTER) DDR ## DDR_LETTER
-#define GET_DDR(DDR_LETTER) __GET_DDR(DDR_LETTER)
-
-#define __GET_PORT(PORT_LETTER) PORT ## PORT_LETTER
-#define GET_PORT(PORT_LETTER) __GET_PORT(PORT_LETTER)
-
-#define __GET_PORT_DATA(PORT_LETTER, PORT_PIN) (((PIN ## PORT_LETTER)&(1<<(P ## PORT_LETTER ## PORT_PIN)))>>(P ## PORT_LETTER ## PORT_PIN))
-#define GET_PORT_DATA(PORT_LETTER, PORT_PIN) __GET_PORT_DATA(PORT_LETTER, PORT_PIN)
-
 
 #define __GET_PORT_DATA(PORT_LETTER, PORT_PIN) (((PIN ## PORT_LETTER)&(1<<(P ## PORT_LETTER ## PORT_PIN)))>>(P ## PORT_LETTER ## PORT_PIN))
 #define GET_PORT_DATA(PORT_LETTER, PORT_PIN) __GET_PORT_DATA(PORT_LETTER, PORT_PIN)
@@ -22,18 +13,16 @@
 #define TriacON PTRIAC |=(1<<PINTRIAC)
 #define TriacOFF PTRIAC &=~(1<<PINTRIAC)
 
-
-
 #define F_CPU 8000000UL
 #define NO_DELAY 1
 
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avr/pgmspace.h>
 #include <util/delay.h>
-#include "Encoder.h"
+#include <avr/eeprom.h>
 #include "7Segment.h"
+#include "Encoder.h"
 
 //управление симистором
 #define DTRIAC DDRC
@@ -54,29 +43,38 @@
 
 
 volatile uint8_t	EncoderFlag = 0;//флаг прерывания энкодера
-volatile uint16_t	EncCounter = 0;
-volatile uint8_t	EncCurState=0;//содержится состояние энкодера, нужно хранить для определения направления вращения
-volatile uint8_t	EncPushDown=0;//для работы с кнопкой
+volatile uint8_t	EncCounter = 2;//счетчик периодов/показатель
+uint8_t	EncCurState=0;//содержится состояние энкодера, нужно хранить для определения направления вращения
+uint8_t	EncPushDown=0;//для работы с кнопкой
 
 
 volatile uint8_t	SSegmentFlag = 0;//флаг прерывания таймера
-volatile uint16_t	SSegmentText = 0;//для хранения цифр на индикаторе (старший и младший разряды)
-volatile uint8_t	SSegmentDigit = 1;//разряд индикатора (всего 2) нужно для отображения обооих цифр одновременно
+uint16_t	SSegmentText = 0;//для хранения цифр на индикаторе (старший и младший разряды)
+uint8_t	SSegmentDigit = 1;//разряд индикатора (всего 2) нужно для отображения обооих цифр одновременно
 
 
 volatile uint8_t	ButtonFlag = 0;//флаг прерывания кнопки
 volatile uint8_t	WelderCount=0;//для подсчета периодов
 
 
-void InitInt1 (void)
+void InitIntButt (void)
 {
 	//инициализация прерывания кнопки
 	//по обоим фронтам-для ручной сварки по кнопке
-	EICRA &=0;
-	EICRA=(0<<ISC11)|(1<<ISC10);
+	EICRA|=((0<<ISC11)|(1<<ISC10));
 	EIMSK|=(1<<INT1);
 }
 
+void InitPCICR (void)
+{
+	//инициализация прерываний энкодера
+	PCMSK1=0;
+	PCICR=0;
+	//включаем прерывание на PCINT[14:8]
+	PCICR|=(1<<PCIE1);
+	//разрешаем прерывание PCINT8,9,10
+	PCMSK1|=(1<<PCINT8)|(1<<PCINT9)|(1<<PCINT10);
+}
 
 ISR(INT0_vect)
 {
@@ -93,7 +91,9 @@ ISR(INT0_vect)
 		//отключаем симистор
 		TriacOFF;
 		//восстанавливаем прерывание кнопки, т.к. иначе не зайдет по флагу в основном цикле
-		InitInt1();
+		InitIntButt();
+		//восстанавливаем прерывание энкодера
+		InitPCICR();
 
 	}
 
@@ -101,8 +101,6 @@ ISR(INT0_vect)
 
 ISR(INT1_vect)
 {
-	//восстанавливаем флаг прерывания если вдруг произойдет INT0
-	sei();
 	//прерывание INT1 - Нажата кнопка
 	ButtonFlag = 1;
 }
@@ -113,17 +111,12 @@ ISR(PCINT1_vect)
 	//восстанавливаем флаг прерыванияесли вдруг произойдет INT0
 	sei();
 	EncoderFlag = 1;
-	EncCurState <<= 2;
-	EncCurState &= 0b00001100;
-	EncCurState |= ((GET_ENCODER_PORT_DATA(ENCPOLL_A_PORT, ENCPOLL_A_PIN)<<1)|(GET_ENCODER_PORT_DATA(ENCPOLL_B_PORT, ENCPOLL_B_PIN)));
-	
+
 }
 
 
 ISR(TIMER0_COMPA_vect)
 {
-	//восстанавливаем флаг прерыванияесли вдруг произойдет INT0
-	sei();
 	//прерывание таймера 0
 	//20мс прошло
 	//сбрасываем значение счетчика энкодера
@@ -149,68 +142,35 @@ void InitTimer2 (void)
 	TCNT2 = 0;
 }
 
-void InitInt0 (void)
+void InitIntZero (void)
 {
 	//инициализация прерывания при переходе фазы через 0
 	//по спадающему фронту
-	EICRA &=0;
-	EICRA=(1<<ISC01)|(0<<ISC00);
+	EICRA|=((1<<ISC01)|(0<<ISC00));
 	EIMSK|=(1<<INT0);
 }
-
-void InitPCICR (void)
-{
-	//инициализация прерываний энкодера
-	PCMSK1&=0;
-	PCICR&=0;
-	//включаем прерывание на PCINT[14:8]
-	PCICR|=(1<<PCIE1);
-	//разрешаем прерывание PCINT8,9,10
-	PCMSK1|=(1<<PCINT8)|(1<<PCINT9)|(1<<PCINT10);
-}
-
-
-int8_t	EncPollDelta()
-{
-	
-	return pgm_read_byte(&(EncState[EncCurState]));
-}
-
-/*
-static uint8_t TurnBitsAround( uint8_t aByte )//инвертируем биты в байте и меням соседние биты местами 
-												//- из-за разводки
-{
-return (aByte & 0x80 ? 0x02 : 0) |
-(aByte & 0x40 ? 0x01 : 0) |
-(aByte & 0x20 ? 0x08 : 0) |
-(aByte & 0x10 ? 0x04 : 0) |
-(aByte & 0x08 ? 0x20 : 0) |
-(aByte & 0x04 ? 0x10 : 0) |
-(aByte & 0x02 ? 0x80 : 0) |
-(aByte & 0x01 ? 0x40 : 0);
-}*/
 
 
 void TriacInit(void)
 {
+	//выход, 0
 	DTRIAC |= (1<<PINTRIAC);
 	PTRIAC &=~(1<<PINTRIAC);
 }
 
-
-/*
-void TriacON(void)
+void ButtonInit(void)
 {
-	PTRIAC |=(1<<PINTRIAC);
+	//вход с подтяжкой
+	DDRD &= ~(1<<PD3);
+	PORTD |=(1<<PD3);
 }
-*/
 
-/*
-void TriacOFF(void)
+void ZerodetectPortInit(void)
 {
-	PTRIAC &=~(1<<PINTRIAC);
-}*/
-
+	//вход с подтяжкой
+	DDRD &= ~(1<<PD2);
+	PORTD |=(1<<PD2);
+}
 
 void SsegmentShow(void)
 {
@@ -219,7 +179,7 @@ void SsegmentShow(void)
 	//инвертируем разряд
 	SSegmentDigit ^= 1;
 			
-	if (!(EncPushDown))
+	if (!(EncPushDown))//кнопка нажата, надо отобразить "--"
 	{
 		SSegmentText = (EncCounter/10) << 8;
 		SSegmentText = (EncCounter%10);
@@ -228,13 +188,13 @@ void SsegmentShow(void)
 			
 	if (SSegmentDigit)
 	{
-		PSEG0 &= ~(0<<PINSEG0);
+		PSEG0 &= ~(1<<PINSEG0);
 		PSEG1 |= (1<<PINSEG0);
 	}
 	else
 	{
 		PSEG0 |= (1<<PINSEG0);
-		PSEG1 &= ~(0<<PINSEG0);
+		PSEG1 &= ~(1<<PINSEG0);
 	}
 
 }
@@ -243,7 +203,7 @@ void SsegmentShow(void)
 int main(void)
 {
 	cli();
-	int8_t EncStep =0; //счетчик кол-ва шагов для изменения цифры на индикаторе
+	int8_t temp =0; 
 	
 	//общая инициализация портов - вход с подтяжкой
 	DDRB=0;
@@ -253,39 +213,54 @@ int main(void)
 	DDRD=0;
 	PORTD=0xFF;
 
-	//настраиваем пины катодов сегментов
-	//на выход и выставляем 0
+	
+	//!!!!!!!!!!!!!!!!!!Настройка портов!!!!!!!!!
+	
+	//настраиваем пины баз транзисторов в катодах сегментов на выход и выставляем 0
 	DSEG0 |= (1<<PINSEG0);
-	PSEG0 &= ~(0<<PINSEG0);
+	PSEG0 &= ~(1<<PINSEG0);
+	
 	DSEG1 |= (1<<PINSEG1);
-	PSEG1 &= ~(0<<PINSEG1);
+	PSEG1 &= ~(1<<PINSEG1);
 	
-	InitInt1();//нажатие кнопки
+	SSegmentInit();// инициализация портов индикатора
+	EncoderInit();//инициализация портов энкодера
+	TriacInit(); //инициализация порта симистора
+	ButtonInit();//инициализация порта кнопки
+	ZerodetectPortInit();//инициализация порта детекта фазы
+		
+	
+	//!!!!!!!!!!!!!!ПРЕРЫВАНИЯ!!!!!!!!!!!!!!!
+	
+	InitIntButt();//прерывания от нажатия кнопки
 	InitPCICR();//прерывания от энкодера (PCINT8, PCINT9) и его кнопки PCINT10
-	InitTimer2();//для индикации
+	InitTimer2();//прерывания таймера для индикации
 	
+	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	
+		
 	//проверяем индикаторы
 	SSegmentOn();
-	PSEG0 &= ~(0<<PINSEG0);
-	PSEG1 |= (1<<PINSEG0);
-	_delay_ms(150);
 	PSEG0 |= (1<<PINSEG0);
-	PSEG1 &= ~(0<<PINSEG0);
-	_delay_ms(150);
+	PSEG1 |= (1<<PINSEG1);
+	//_delay_ms(150);
+	PSEG0 &= ~(1<<PINSEG0);
+	PSEG1 &= ~(1<<PINSEG1);
 	SSegmentOFF();
 	
 	
-	EncoderFlag=0;
-	ButtonFlag=0;
 	
-	//инициализация остальных ножек
-	
-	TriacInit(); //инициализация порат симистора
-	
-	
+	//загружаем прошлое значение выдержки
+	EncCounter = eeprom_read_byte((uint8_t*)10);
+	if ((EncCounter > 128)|(EncCounter<2)) EncCounter = 2;
+	if (EncCounter > 99) EncCounter = 99;
+
 	
 	//разрешаем прерывания
-	sei();
+	//sei();
+
+	EncoderFlag=0;
+	ButtonFlag=0;
 
     while(1)
     {
@@ -297,11 +272,13 @@ int main(void)
 			SsegmentShow();
 		}
 
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 		//нажата кнопка
 		if (ButtonFlag)
 		{
 			ButtonFlag = 0;
-			_delay_ms(20);
+			//_delay_ms(20);
 			if (GET_PORT_DATA(D,3) == 0)
 			//все еще нажата - не дребезг
 			{
@@ -317,11 +294,13 @@ int main(void)
 					//включаем симистор
 					TriacON;
 					//запускаем отсчет периодов
-					InitInt0();
+					InitIntZero();
 					
 				}
 				else
 				{
+					//запрещаем прерывание энкодера
+					PCICR&=~(1<<PCIE1);
 					//если мы на ручном управлении - надо включить симистор и ждать пока отпустят кнопку	
 					TriacON;
 				}
@@ -335,6 +314,8 @@ int main(void)
 				{
 					//отключаем симистор
 					TriacOFF;
+					//восстанавливаем прерывание энкодера
+					InitPCICR();
 					
 				}
 				else
@@ -342,10 +323,10 @@ int main(void)
 					//если в режиме счета периодов
 					if (WelderCount == 0)
 					{
-						//отключаем триак, но он уже отключен из прерывания
+						//отключаем симистор, но он уже отключен из прерывания
 						TriacOFF;
-						//периоды истекли
-						//восстанавливаем прерывание энкодера (не будет работаь еслил после окончания сварки держать кнопку - незачем)
+						//периоды истекли, это все уже сделано в прерывании, но на всякий случай
+						//восстанавливаем прерывание энкодера
 						InitPCICR();
 						
 					}		
@@ -355,22 +336,19 @@ int main(void)
 		}
 		
 		
-		
-		
-		
-		
-		
-		
-		
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!		
 		
 		
 		//было прерывание энкодера
-		if (EncoderFlag) {
+		if (EncoderFlag) 
+		{
 			//снимаем флаг
 			EncoderFlag=0;
-			_delay_ms(20);
+			//_delay_ms(20);
+			//поднимаем флаг обновления индикатора
+			SSegmentFlag=1;
 			//определяем нажата ли кнопка энкодера
-			if (GET_PORT_DATA(C,3) == 0) 
+			if (GetEncoderButt() == 0) 
 			{
 				//инвертируем флаг отображения цифр
 				EncPushDown ^= 1;
@@ -381,41 +359,22 @@ int main(void)
 					//выставляем на индикаторе "--"
 					SSegmentOut(10);
 				}
-				//поднимаем флаг обновления индикатора
-				SSegmentFlag=1;
-			
 			}
 			else
 			{
-				//не нажата
+				//не нажата - крутили энкодер
 				//определяем положение энкодера
-				EncStep += EncPollDelta(EncCurState);
-				if (EncStep>0) {
-					EncStep=0;	
-					EncCounter++;
-				}
-				if (EncStep<0) {
-					EncStep=0;
-					EncCounter--;
-				}
-			
+				temp=EncCounter;
+				EncCounter+=GetEncoder(&EncCurState);
 				//т.к. byte то если меньше 0 становится 255
-				if (EncCounter > 128) EncCounter = 0;
+				if ((EncCounter > 128)|(EncCounter<2)) EncCounter = 2;
 				if (EncCounter > 99) EncCounter = 99;
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
+
+				if (temp !=EncCounter)
+				{
+					//значение изменилось - записываем в память (что бы при включении восстановить)
+					eeprom_write_byte((uint8_t*)10,EncCounter);
+				}
 			
 			}
 		}
