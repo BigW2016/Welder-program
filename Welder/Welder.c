@@ -14,7 +14,7 @@
 #define TriacOFF PTRIAC &=~(1<<PINTRIAC)
 
 #define F_CPU 8000000UL
-//#define NO_DELAY 1
+#define DELAY
 
 
 #include <avr/io.h>
@@ -49,7 +49,10 @@ uint8_t	EncPushDown=0;//для работы с кнопкой
 
 
 volatile uint8_t	SSegmentFlag = 0;//флаг прерывания таймера
-uint16_t	SSegmentText = 0;//для хранения цифр на индикаторе (старший и младший разряды)
+union { uint16_t full; uint8_t word[2];} SSegmentText; //для хранения цифр на индикаторе (старший и младший разряды)
+
+
+//volatile uint16_t	SSegmentText = 0;//для хранения цифр на индикаторе (старший и младший разряды)
 uint8_t	SSegmentDigit = 1;//разряд индикатора (всего 2) нужно для отображения обооих цифр одновременно
 
 
@@ -181,9 +184,9 @@ void SsegmentShow(void)
 			
 	if (!(EncPushDown))//кнопка нажата, надо отобразить "--"
 	{
-		SSegmentText = (EncCounter/10) << 8;
-		SSegmentText = (EncCounter%10);
-		SSegmentOut(SSegmentText>>(8*SSegmentDigit));
+		SSegmentText.word[1] = (EncCounter/10);
+		SSegmentText.word[0] = (EncCounter%10);
+		SSegmentOut(SSegmentText.word[SSegmentDigit]);
 	}
 			
 	if (SSegmentDigit)
@@ -243,7 +246,9 @@ int main(void)
 	SSegmentOn();
 	PSEG0 |= (1<<PINSEG0);
 	PSEG1 |= (1<<PINSEG1);
+	#ifdef DELAY
 	_delay_ms(150);
+	#endif
 	PSEG0 &= ~(1<<PINSEG0);
 	PSEG1 &= ~(1<<PINSEG1);
 	SSegmentOFF();
@@ -257,7 +262,7 @@ int main(void)
 
 	
 	//разрешаем прерывания
-	sei();
+	//sei();
 
 	EncoderFlag=0;
 	ButtonFlag=0;
@@ -278,7 +283,9 @@ int main(void)
 		if (ButtonFlag)
 		{
 			ButtonFlag = 0;
-			_delay_ms(20);
+			#ifdef DELAY
+			_delay_ms(150);
+			#endif
 			if (GET_PORT_DATA(D,3) == 0)
 			//все еще нажата - не дребезг
 			{
@@ -344,7 +351,9 @@ int main(void)
 		{
 			//снимаем флаг
 			EncoderFlag=0;
-			_delay_ms(20);
+			#ifdef DELAY
+			_delay_ms(150);
+			#endif
 			//поднимаем флаг обновления индикатора
 			SSegmentFlag=1;
 			//определяем нажата ли кнопка энкодера
